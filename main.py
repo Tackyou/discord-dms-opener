@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import discord
 from termcolor import colored
 
@@ -14,7 +15,7 @@ TOKEN_AUTH = config_file["USER_TOKEN"]
 USER_ID = config_file["USER_ID"]
 FOLDER_PATH = config_file["FOLDER_PATH"]
 user_list = []
-
+retry_list = []
 
 for root, dirs, files in os.walk(FOLDER_PATH):
     for main_file in files:
@@ -29,16 +30,14 @@ for root, dirs, files in os.walk(FOLDER_PATH):
 client = discord.Client()
 ignored_channels_list = list(map(int, ignored_channels_list))
 
-
-@client.event
-async def on_ready():
-    for user in user_list:
-        if user in ignored_channels_list:
-            print(colored(f"Ignoring user {user}", "white"))
-            continue
+async def open_dm(user):
+    if user in ignored_channels_list:
+        print(colored(f"Ignoring user {user}", "white"))
+        return
+    try:
         fetched_user = await client.fetch_user(user)
         await fetched_user.create_dm()
-        print(f'Created DMS with {user}')
+        print(f"Created DMS with {user}")
         # Uncomment the lines below if you wish to add a user to ignore list after opening its DMs
         """
         ignored_channels_list.append(user)
@@ -46,6 +45,18 @@ async def on_ready():
             json.dump(ignored_channels_file, f)
         print(colored(f'Added {user} to ignore list', 'yellow'))
         """
+    except discord.errors.HTTPException:
+        print(f"Opening {user} failed, will wait 10s")
+        retry_list.append(user)
+        time.sleep(10)
+
+@client.event
+async def on_ready():
+    for user in user_list:
+        await open_dm(user)
+    for user in retry_list:
+        await open_dm(user)
+
     print(colored("All dms have been opened", "green"))
     await client.close()
 
